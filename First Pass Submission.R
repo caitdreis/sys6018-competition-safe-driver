@@ -7,8 +7,8 @@ test <- read.csv("test-1.csv", header=TRUE, stringsAsFactors = FALSE)
 
 #create a function to assess mode in the target column
 getmode <- function(v) {
-  uniqv <- unique(v) #identify the unique values within the data
-  uniqv[which.max(tabulate(match(v, uniqv)))] #tabulate the unique values
+  unique <- unique(v) #identify the unique values within the data
+  unique[which.max(tabulate(match(v, unique)))] #tabulate the unique values
 }
 
 mode <- getmode(train$target) #run the function that we created
