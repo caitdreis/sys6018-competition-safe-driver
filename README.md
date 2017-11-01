@@ -11,11 +11,14 @@ Caitlin Dreisbach: Github owner, data cleaning and exploration, linear model
 
 #Approaches
 
-Linear model:
-  Accuracy:
+First pass: imputation with the mode
+  Score: -0.006
+
+Linear model: general linear model with cross-validation
+  Score: -0.005
   
 Nonlinear model:
-  Accuracy:
+  Score:
   
 Open Track:
-  Accuracy:
+  Score:
