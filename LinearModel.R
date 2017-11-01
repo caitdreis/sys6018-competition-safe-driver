@@ -153,7 +153,7 @@ test_impute$ps_car_11_cat <- as.character(test_impute$ps_car_11_cat)
 
 #Predict on subset of testing data in linear regression
 pred_test3 <- predict(model2.lm, newdata=test_impute, type="response") #predict based on the linear model in the testing data
-pred_test3 <- ifelse(pred_test3 > 0.5,1,0); pred_test3 #if we wanted a binary classification
+#pred_test3 <- ifelse(pred_test3 > 0.5,1,0); pred_test3 #if we wanted a binary classification
 
 #Transform prediction to exponential
 #preds.test3 <- sapply(pred_test3, exp) #applies exponential transformation to the prediction testing if desired
