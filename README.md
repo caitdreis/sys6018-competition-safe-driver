@@ -3,11 +3,11 @@ Team 4-4
 
 #Team Members
 
-Sally Gao:
+Sally Gao: Open track, data exploration, variable signifance, support vector machine (SVM)
 
-Adrian Mead:
+Adrian Mead: Random Forest
 
-Caitlin Dreisbach: Github owner
+Caitlin Dreisbach: Github owner, data cleaning and exploration, linear model
 
 #Approaches
 
