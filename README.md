@@ -15,7 +15,7 @@ First pass: imputation with the mode
   Score: -0.006
 
 Linear model: general linear model with cross-validation
-  Score: -0.005
+  Score: 0.006
   
 Nonlinear model:
   Score:
