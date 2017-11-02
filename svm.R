@@ -128,48 +128,105 @@ new_train <- rbind(train_ones, train_subsetzeros)
 
 # (Using only sig_cat_vars[1:10])
 
-svm_train <- data.frame(target = factor(train$target),
-                        ps_reg_01 = train$ps_reg_01,
-                        ps_reg_02 = train$ps_reg_02,
-                        ps_reg_03 = train$ps_reg_03,
-                        ps_car_12 = train$ps_car_12,
-                        ps_car_13 = train$ps_car_13,
-                        ps_car_14 = train$ps_car_14,
-                        ps_car_15 = train$ps_car_15,
-                        ps_ind_05_cat = factor(train$ps_ind_05_cat),
-                        ps_ind_06_bin = factor(train$ps_ind_06_bin),
-                        ps_ind_07_bin = factor(train$ps_ind_07_bin),
-                        ps_ind_17_bin = factor(train$ps_ind_17_bin),
-                        ps_car_01_cat = factor(train$ps_car_01_cat),
-                        ps_car_04_cat = factor(train$ps_car_04_cat),
-                        ps_car_06_cat = factor(train$ps_car_06_cat),
-                        ps_car_07_cat = factor(train$ps_car_07_cat),
-                        ps_car_11_cat = factor(train$ps_car_11_cat)
+svm_df <- data.frame(target = factor(new_train$target),
+                        ps_reg_01 = new_train$ps_reg_01,
+                        ps_reg_02 = new_train$ps_reg_02,
+                        ps_reg_03 = new_train$ps_reg_03,
+                        ps_car_12 = new_train$ps_car_12,
+                        ps_car_13 = new_train$ps_car_13,
+                        ps_car_14 = new_train$ps_car_14,
+                        ps_car_15 = new_train$ps_car_15,
+                        ps_ind_05_cat = factor(new_train$ps_ind_05_cat),
+                        ps_ind_06_bin = factor(new_train$ps_ind_06_bin),
+                        ps_ind_07_bin = factor(new_train$ps_ind_07_bin),
+                        ps_ind_17_bin = factor(new_train$ps_ind_17_bin),
+                        ps_car_01_cat = factor(new_train$ps_car_01_cat),
+                        ps_car_04_cat = factor(new_train$ps_car_04_cat),
+                        ps_car_06_cat = factor(new_train$ps_car_06_cat),
+                        ps_car_07_cat = factor(new_train$ps_car_07_cat),
+                        ps_car_11_cat = factor(new_train$ps_car_11_cat),
+                        ps_ind_03 = ordered(new_train$ps_ind_03) # ordinal
                         )
 
-quick_svm <- svm(target ~ ., svm_train, probability=TRUE)
+split_ids <- sample(1:nrow(svm_df), nrow(svm_df)/2)
 
-# kernel = "radial"
+svm_train <- svm_df[split_ids,]
+svm_test <- svm_df[-split_ids,]
+
+
+##################################################################################
+# QUICK UNTUNED SVM -- KERNEL RADIAL
+Sys.time()
+quick_svm <- svm(target ~ ., svm_train, probability=TRUE)
+Sys.time()
+
+# [1] "2017-11-02 13:21:48 EDT "2017-11-02 13:28:25 EDT" - 7 mins with 21k obs and 17 vars
+# # 29k observations and 18 variables: 9 mins
+
+pred <- predict(quick_svm, svm_test, probability=TRUE)
+
+pred.df <- data.frame(attr(pred, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), pred.df$X1)
+# 0.2480507 cool
+
 # kernel = "linear"
 # kernel = "polynomial"
 
 # testy stuff ######################
+##################################################################################
 
-# Grab *all* of target==1? ##########################################
-svm_train_test <- svm_train %>% 
-  sample_frac(size = .05)
+# PREDICT TEST DATA ========================================================================
 
-Sys.time()
-quick_svm_test <- svm(target ~ ., svm_train_test, probability=TRUE)
-Sys.time()
+test <- read_csv("test.csv")
 
-# Training error
-pred <- predict(quick_svm_test, svm_train_test, probability=TRUE)
+# Impute mean for missing values in ps_reg_03 and ps_car_14. 
 
-pred.df <- data.frame(attr(pred, "probabilities"))
+psreg03_all <- data.frame(c(train$ps_reg_03, test$ps_reg_03))
+names(psreg03_all) <- "var"
+psreg03_all <- psreg03_all %>% 
+  filter(var!=-1)
 
-normalized.gini.index(as.numeric(svm_train_test$target), pred.df$X1)
-# -0.5814639
+psreg03_mean <- mean(psreg03_all$var)
 
-# 29k observations and 18 variables: 9 mins
+ps_car_14_all <- data.frame(c(train$ps_car_14, test$ps_car_14))
+names(ps_car_14_all) <- "var"
+ps_car_14_all <- ps_car_14_all %>% 
+  filter(var!=-1)
 
+pscar14_mean <- mean(ps_car_14_all$var)
+
+# Replace -1s with imputed means
+test$ps_reg_03[test$ps_reg_03==-1] <- psreg03_mean
+test$ps_car_14[test$ps_car_14==-1] <- pscar14_mean
+
+# Create new df so SVM will run
+test_df <- data.frame(
+                     ps_reg_01 = test$ps_reg_01,
+                     ps_reg_02 = test$ps_reg_02,
+                     ps_reg_03 = test$ps_reg_03,
+                     ps_car_12 = test$ps_car_12,
+                     ps_car_13 = test$ps_car_13,
+                     ps_car_14 = test$ps_car_14,
+                     ps_car_15 = test$ps_car_15,
+                     ps_ind_05_cat = factor(test$ps_ind_05_cat),
+                     ps_ind_06_bin = factor(test$ps_ind_06_bin),
+                     ps_ind_07_bin = factor(test$ps_ind_07_bin),
+                     ps_ind_17_bin = factor(test$ps_ind_17_bin),
+                     ps_car_01_cat = factor(test$ps_car_01_cat),
+                     ps_car_04_cat = factor(test$ps_car_04_cat),
+                     ps_car_06_cat = factor(test$ps_car_06_cat),
+                     ps_car_07_cat = factor(test$ps_car_07_cat),
+                     ps_car_11_cat = factor(test$ps_car_11_cat),
+                     ps_ind_03 = ordered(test$ps_ind_03) # ordinal
+)
+
+test_pred <- predict(quick_svm, test_df, probability=TRUE)
+
+testpred.df <- data.frame(attr(test_pred, "probabilities"))
+
+final_preds <- cbind(test$id, testpred.df$X1)
+names(final_preds) <- c("id", "target")
+
+write.table(final_preds, file = "svm_untuned_01.csv", 
+            row.names=F, col.names=T, sep=",")
