@@ -59,8 +59,10 @@ getmode <- function(v, na.rm = TRUE) {
 imputation_values <- lapply(drop_nas_train, function(X){
   if(class(X) %in% c('factor', 'logical')){ # So categorical variables
     return(getmode(X))
-  } else{ # So continuous variables
+  } else if(class(X) == 'numeric'){ # So continuous variables
     return(mean(X, na.rm=T))
+  } else{ # should catch integer
+    return(as.integer(mean(X, na.rm=T)))
   }
 })
 
@@ -68,15 +70,29 @@ imputation_values <- lapply(drop_nas_train, function(X){
 impute_train <- drop_nas_train %>% 
   replace_na(imputation_values)
 
+# Make the integer columns into ordered
+impute_train <- bind_cols(lapply(impute_train, function(X){
+  if(class(X) == 'integer'){
+    return(ordered(X))
+  } else{
+    return(X)
+  }
+}))
+
 # Check for multicollinearity
 alias(lm(target~.-id, impute_train))
 # It looks like we have some perfect multicollinearity (some variables are linear combinations of others)
 # We can solve this by removing them: 'ps_ind_09_binTRUE' and 'ps_ind_13_binTRUE'
-
-# Make the target variable a logical
-impute_train$target <- as.logical(impute_train$target)
 impute_train$ps_ind_09_bin <- NULL
 impute_train$ps_ind_13_bin <- NULL
+
+# Looking at multicollinearity
+vif(lm(target~.-id, impute_train))
+# Not really any columns with a large amount of multicollinearity judging by GVIF^(1/(2*Df))
+
+# Make the target variable a logical
+impute_train$target <- train$target
+impute_train$id <- train$id
 
 # randomForest function is having trouble with factors with levels over 53, so remove those columns that violate
 which(sapply(impute_train, function(X) length(levels(X))) > 50)
@@ -93,13 +109,9 @@ set.seed(100)
 sample_these <- sample(NROW(impute_train), 10000)
 sample <- impute_train[sample_these,]
 # We produce a pairwise plot of the predictors to try and decide if we need to do any transformations of the variables
-ggpairs(sample[which(lapply(sample, class) %in% c('integer', 'numeric'))])
+# ggpairs(sample[which(lapply(sample, class) %in% c('integer', 'numeric'))])
 # For the most part it looks pretty good. There aren't any particularly skewed distributions; most variables are either normal 
 # or uniform
-
-# Looking at multicollinearity
-vif(lm(target~.-id, sample))
-# Not really any columns with a large amount of multicollinearity
 
 # I decided to use Out-Of-Bag error estimation to decide what value of m to use. Above m=15 doesn't
 # seem to produce super-strong results. It also takes longer and longer to run the model
