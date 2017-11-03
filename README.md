@@ -3,11 +3,11 @@ Team 4-4
 
 ##----------------------Team Members
 
-Sally Gao: Open track, data exploration, variable signifance, support vector machine (SVM)
+Sally Gao: Open track, data exploration, variable signifance, support vector machine (SVM), one-page reflection
 
-Adrian Mead: Random forest, optimization of linear model with K-fold CV
+Adrian Mead: Random forest, optimization of linear model with K-fold CV, one-page reflection
 
-Caitlin Dreisbach: Github owner, data cleaning and exploration, first pass submission, linear model with K-fold CV
+Caitlin Dreisbach: Github owner, first pass submission, linear model with K-fold CV, one-page reflection
 
 ##----------------------Approaches
 
@@ -22,3 +22,4 @@ Nonlinear model:Random Forest with Out-Of-Bag
   
 Open Track:
   Score: 0.262
+  
