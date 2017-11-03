@@ -84,6 +84,12 @@ sig_cat_vars <- train_chisq %>%
 
 sig_cat_vars
 
+# In decreasing order of p-value:
+# [1] "ps_car_11_cat" "ps_ind_05_cat" "ps_car_01_cat" "ps_car_04_cat" "ps_ind_17_bin" "ps_car_07_cat" "ps_car_06_cat"
+# [8] "ps_ind_07_bin" "ps_ind_06_bin" "ps_ind_03"     "ps_car_02_cat" "ps_ind_16_bin" "ps_car_09_cat" "ps_ind_04_cat"
+# [15] "ps_ind_15"     "ps_car_08_cat" "ps_car_11"     "ps_ind_01"     "ps_ind_02_cat" "ps_ind_08_bin" "ps_ind_09_bin"
+# [22] "ps_ind_12_bin" "ps_ind_14"     "ps_ind_18_bin"
+
 # EXPLORATORY ANALYSIS: CONTINUOUS VARIABLES ==============================================================
 
 testglm <- glm(target ~ ps_reg_01 +
@@ -122,11 +128,12 @@ train_subsetzeros <- train_zeros[subset_ids,]
 # Put them together
 new_train <- rbind(train_ones, train_subsetzeros)
 
-# BUILD SVM MODEL ========================================================================
+# CROSS-VALIDATE SVM MODEL ========================================================================
 
 # The SVM function only works if we build a dataframe containing no unused variables.
 
-# (Using only sig_cat_vars[1:10])
+# First, we'll try using all of the continuous variables and the top 10 categorical/ordinal variables
+# according to sig_cat_vars.
 
 svm_df <- data.frame(target = factor(new_train$target),
                         ps_reg_01 = new_train$ps_reg_01,
@@ -148,33 +155,106 @@ svm_df <- data.frame(target = factor(new_train$target),
                         ps_ind_03 = ordered(new_train$ps_ind_03) # ordinal
                         )
 
+# To cross-validate, we will split the svm_df into a training set and a test set. (K-fold cross-validation
+# is not feasible considering the computational demands of SVM.)
+# Our testing error is based on the normalized gini index. (Code for this function can be found in gini.R.)
+
 split_ids <- sample(1:nrow(svm_df), nrow(svm_df)/2)
 
 svm_train <- svm_df[split_ids,]
 svm_test <- svm_df[-split_ids,]
 
+# 1) Untuned SVM, radial kernel:
 
-##################################################################################
-# QUICK UNTUNED SVM -- KERNEL RADIAL
-Sys.time()
-quick_svm <- svm(target ~ ., svm_train, probability=TRUE)
-Sys.time()
+radial_untuned_svm <- svm(target ~ ., svm_train, probability=TRUE)
 
-# [1] "2017-11-02 13:21:48 EDT "2017-11-02 13:28:25 EDT" - 7 mins with 21k obs and 17 vars
-# # 29k observations and 18 variables: 9 mins
-
-pred <- predict(quick_svm, svm_test, probability=TRUE)
-
+pred <- predict(radial_untuned_svm, svm_test, probability=TRUE)
 pred.df <- data.frame(attr(pred, "probabilities"))
 
 normalized.gini.index(as.numeric(svm_test$target), pred.df$X1)
-# 0.2480507 cool
+# 0.2480507
 
-# kernel = "linear"
-# kernel = "polynomial"
+# 2) Untuned SVM, linear kernel:
 
-# testy stuff ######################
-##################################################################################
+linear_untuned_svm <- svm(target ~ ., svm_train, probability=TRUE, kernel="linear")
+
+lin.pred <- predict(linear_untuned_svm, svm_test, probability=TRUE)
+linpred.df <- data.frame(attr(lin.pred, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), linpred.df$X1)
+# 0.2405003 - *slightly* worse than the radial kernel, but similar
+
+# 3) How about with 2 more variables from sig_cat_vars - "ps_car_02_cat" and "ps_ind_16_bin"?
+
+svm_df["ps_car_02_cat"] <- factor(new_train$ps_car_02_cat)
+svm_df["ps_ind_16_bin"] <- factor(new_train$ps_ind_16_bin)
+
+svm_train <- svm_df[split_ids,]
+svm_test <- svm_df[-split_ids,]
+
+radial_untuned_svm_2 <- svm(target ~ ., svm_train, probability=TRUE)
+
+pred3 <- predict(radial_untuned_svm_2, svm_test, probability=TRUE)
+pred3.df <- data.frame(attr(pred3, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), pred3.df$X1)
+# 0.2495208 -- an improvement!
+
+# 4) Adding in the next 2 most significant variables: "ps_car_09_cat", "ps_ind_04_cat"
+
+svm_df["ps_car_09_cat"] <- factor(new_train$ps_car_09_cat)
+svm_df["ps_ind_04_cat"] <- factor(new_train$ps_ind_04_cat)
+
+svm_train <- svm_df[split_ids,]
+svm_test <- svm_df[-split_ids,]
+
+radial_untuned_svm_3 <- svm(target ~ ., svm_train, probability=TRUE)
+
+pred4 <- predict(radial_untuned_svm_3, svm_test, probability=TRUE)
+pred4.df <- data.frame(attr(pred4, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), pred4.df$X1)
+# 0.2541848 -- still improving -- probably room for more predictors
+
+# 5) More predictors: "ps_ind_15", "ps_car_08_cat"
+
+svm_df["ps_ind_15"] <- ordered(new_train$ps_ind_15)
+svm_df["ps_car_08_cat"] <- factor(new_train$ps_car_08_cat)
+svm_train <- svm_df[split_ids,]
+svm_test <- svm_df[-split_ids,]
+
+radial_untuned_svm_4 <- svm(target ~ ., svm_train, probability=TRUE)
+
+pred.r4 <- predict(radial_untuned_svm_4, svm_test, probability=TRUE)
+predr4.df <- data.frame(attr(pred.r4, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), predr4.df$X1)
+# 0.2581669 -- slight improvement, but not as much as before.
+
+# 6) How about one more variable - "ps_car_11"?
+
+svm_df["ps_car_11"] <- ordered(new_train$ps_car_11)
+svm_train <- svm_df[split_ids,]
+svm_test <- svm_df[-split_ids,]
+
+radial_untuned_svm_5 <- svm(target ~ ., svm_train, probability=TRUE)
+
+pred.r5 <- predict(radial_untuned_svm_5, svm_test, probability=TRUE)
+predr5.df <- data.frame(attr(pred.r5, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), predr5.df$X1)
+# 0.2584464 -- gini score improved, but only very slightly. We can keep ps_car_11, but we will
+# stop adding features at this point, because it may become too computationally intensive once
+# we start tuning our model with a larger dataset.
+
+# 7) Now trying different cost parameters. summary(radial_untuned_svm_5) tells us that by default,
+# cost = 1. tune() takes too long because it involves 10-fold CV, so we will try cost values of
+# 0.1, 2 and 10 separately.
+
+Sys.time()
+radial_c0.1 <- svm(target ~ ., svm_train, probability=TRUE, cost=0.1)
+Sys.time()
+
 
 # PREDICT TEST DATA ========================================================================
 
@@ -200,6 +280,15 @@ pscar14_mean <- mean(ps_car_14_all$var)
 test$ps_reg_03[test$ps_reg_03==-1] <- psreg03_mean
 test$ps_car_14[test$ps_car_14==-1] <- pscar14_mean
 
+# Variables in test_df need to have the exact same factor levels as in svm_train.
+# We need to get rid of five "-1"s in test_df$ps_car_02_cat and one in test_df$ps_car_11.
+
+table(test$ps_car_02_cat) # mode is 1
+table(test$ps_car_11) # mode is 3
+
+test$ps_car_02_cat[test$ps_car_02_cat==-1] <- 1
+test$ps_car_11[test$ps_car_11==-1] <-3
+
 # Create new df so SVM will run
 test_df <- data.frame(
                      ps_reg_01 = test$ps_reg_01,
@@ -218,15 +307,24 @@ test_df <- data.frame(
                      ps_car_06_cat = factor(test$ps_car_06_cat),
                      ps_car_07_cat = factor(test$ps_car_07_cat),
                      ps_car_11_cat = factor(test$ps_car_11_cat),
-                     ps_ind_03 = ordered(test$ps_ind_03) # ordinal
+                     ps_ind_03 = ordered(test$ps_ind_03),
+                     ps_car_02_cat = factor(test$ps_car_02_cat),
+                     ps_ind_16_bin = factor(test$ps_ind_16_bin),
+                     ps_car_09_cat = factor(test$ps_car_09_cat),
+                     ps_ind_04_cat = factor(test$ps_ind_04_cat),
+                     ps_ind_15 = ordered(test$ps_ind_15),
+                     ps_car_08_cat = factor(test$ps_car_08_cat),
+                     ps_car_11 = ordered(test$ps_car_11)
 )
 
-test_pred <- predict(quick_svm, test_df, probability=TRUE)
+Sys.time()
+test_pred <- predict(radial_untuned_svm_5, test_df, probability=TRUE)
+Sys.time()
 
 testpred.df <- data.frame(attr(test_pred, "probabilities"))
 
 final_preds <- cbind(test$id, testpred.df$X1)
-names(final_preds) <- c("id", "target")
+colnames(final_preds) <- c("id", "target")
 
-write.table(final_preds, file = "svm_untuned_01.csv", 
+write.table(final_preds, file = "svm_untuned_02.csv", 
             row.names=F, col.names=T, sep=",")
