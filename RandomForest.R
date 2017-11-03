@@ -1,4 +1,5 @@
 # Kaggle Random Forest
+# Adrian Mead
 library(tidyverse)
 library(randomForest)
 library(reshape2)
@@ -6,6 +7,15 @@ library(ggplot2)
 library(GGally)
 library(foreach)
 source('gini.R')
+
+# Random Forests are an extension of decision trees that attempt to deal with the high-variance issues associated
+# with decion trees in a number of ways. First, by buildng many trees from bootstrapped samples of the training 
+# data. And second by using some subset of randomy selected predictors with which to build the tree. These two 
+# methods manage to decorrelate trees and greatly improve predictive accuracy. Random forests are nice because
+# they don't need columns to be transformed/normalized, you can include as many unimportant features as possible 
+# with little effect on the predictive accuracy, and manage to achieve solid accuracy with modeling non-linear 
+# relationships. As such, we think that they make a solid choice for the safe driver data set and the problem
+# of classifying people that will file claims.
 
 # Read in the data; replace -1 with NA
 train <- read_csv('train.csv')#, na = c(-1, '-1', -1.0))
@@ -22,16 +32,16 @@ corrected_cat_columns <- lapply(train[, names(train)[which(sub_cols %in% c('cat'
 #                                 as.logical) %>%
 #   as.tibble()
 
-###########
-# Put in NAs for the continous variables
+# Put in NAs for the continous variables since the import process doesn't catch the -1's
 a <- bind_cols(lapply(train[, names(train)[-which(sub_cols %in% c('cat', 'bin'))]], function(X){
   X[which(X == -1)] <- NA
   return(X)
 }))
 
-###########
-
 # Now combine them back in with the old columns
+# We chose not to replace the -1's in the categorical/logical variables with NA. This is because we think there may be 
+# information in the the very fact that these categorical variables are NA. So keep it and let it be its own factor.
+# However we will want to take care of continuous variable NAs and impute.
 drop_nas_train <- bind_cols(a,
   # train[, names(train)[-which(sub_cols %in% c('cat', 'bin'))]],
                          corrected_cat_columns)#,
@@ -39,7 +49,11 @@ drop_nas_train <- bind_cols(a,
 
 # Going to remove the columns for which more than 50% of data is missing
 too_many_NAs <- sapply(drop_nas_train, function(X){
-  sum(is.na(X)) > NROW(drop_nas_train) * .5
+  if(class(X) %in% c('factor', 'logical')){
+    sum(X == -1) > NROW(drop_nas_train) * .5
+  } else{
+    sum(is.na(X)) > NROW(drop_nas_train) * .5
+  }
 })
 names(which(too_many_NAs))
 # # It looks like "ps_car_03_cat" has too many NAs, so remove it
@@ -54,6 +68,7 @@ getmode <- function(v, na.rm = TRUE) {
 
 
 # And mean for the continous variables
+# Remember that we didn't put any NA values back into the categorical variables
 imputation_values <- lapply(drop_nas_train, function(X){
   if(class(X) %in% c('factor', 'logical')){ # So categorical variables
     return(getmode(X))
@@ -68,7 +83,7 @@ imputation_values <- lapply(drop_nas_train, function(X){
 impute_train <- drop_nas_train %>% 
   replace_na(imputation_values)
 
-# Make the integer columns into ordered
+# Make the integer columns into ordered (in the dataset we are told the integer columns are ordinal)
 impute_train <- bind_cols(lapply(impute_train, function(X){
   if(class(X) == 'integer'){
     return(ordered(X))
@@ -90,43 +105,45 @@ vif(lm(target~.-id, impute_train))
 
 # Make the target variable a logical
 impute_train$target <- factor(train$target)
+# Make the id an integer
 impute_train$id <- train$id
 
 # randomForest function is having trouble with factors with levels over 53, so remove those columns that violate
 which(sapply(impute_train, function(X) length(levels(X))) > 53)
 # It looks like the column, 'ps_car_11_cat' has this problem
-# So we're going to engineer a replacement to this with fewer than 53 columns
-# impute_train %>%
-#   group_by(ps_car_11_cat) %>%
-#   summarize(percent_1s = sum(as.integer(target)) / count(ps_car_11_cat))
 impute_train$ps_car_11_cat <- NULL
 
-
 # It looks like we don't have to do too much messing with distribution. Things are pretty normally distributed in general
-# This is an in-built function for doing Cross-Validation in randomForest
+# This is an in-built function for doing Cross-Validation in randomForest. But instead I choose to use Out-Of-Bag (OOB),
+# as that significantly drops runtime
 # a <- rfcv(sample[,-c(1,2,10:50)], sample$target, cv.fold=5, scale="log", step=0.5)
 
-
 set.seed(100)
-# sample_these <- sample(NROW(impute_train), 10000)
-sample <- bind_rows(impute_train[impute_train$target==0,][sample(NROW(impute_train[impute_train$target==0,]), 10000),], # Half are non-claims
-                    impute_train[impute_train$target==1,][sample(NROW(impute_train[impute_train$target==1,]), 10000),]) # And the other half are claims
-# sample <- impute_train[sample_these,]
+# We're going to have to cut down the amount of data that we're looking at. Unfortunately, if you try and run a random 
+# forest on all ~600K observations, your code will run for hours. You can achieve similar predictive accuracy by sampling
+# intelligently. We ended up using all of the observations that filed claims and an equal number that did not
+sample <- bind_rows(impute_train[impute_train$target==0,][sample(NROW(impute_train[impute_train$target==0,]), 21694),], # Half are non-claims
+                    impute_train[impute_train$target==1,][sample(NROW(impute_train[impute_train$target==1,]), 21694),]) # And the other half are claims
+
 # We produce a pairwise plot of the predictors to try and decide if we need to do any transformations of the variables
-# ggpairs(sample[which(lapply(sample, class) %in% c('integer', 'numeric'))])
+ggpairs(sample[which(lapply(sample, class) %in% c('integer', 'numeric'))])
 # For the most part it looks pretty good. There aren't any particularly skewed distributions; most variables are either normal 
 # or uniform
 
-# I decided to use Out-Of-Bag error estimation to decide what value of m to use. Above m=15 doesn't
+# I decided to use Out-Of-Bag error estimation to decide what value of m to use. m > 15 doesn't
 # seem to produce super-strong results. It also takes longer and longer to run the model
-oob_estimates <- bind_rows(lapply(X = seq(21, 40, 5), function(m){
+# So iterate from 1 to 20 and pick the m that does the best
+oob_estimates <- bind_rows(lapply(X = seq(1, 20), function(m){
   print(m)
-  # Use ntree=100 just to get a quick sense of what m-values are better
-  rf.portseguro <- foreach(ntree=rep(200, 4), .combine=combine, .packages='randomForest', .multicombine=TRUE) %dopar% {randomForest(sample[-c(1,2)],
+  # Use ntree=100 to get a sense of what m-values are better
+  # Introduce some parallelization as well
+  rf.portseguro <- foreach(ntree=rep(25, 4), .combine=combine, .packages='randomForest', .multicombine=TRUE) %dopar% {randomForest(sample[-c(1,2)],
                                                                                                                                     sample$target,
                                                                                                                                     ntree=ntree,
                                                                                                                                     mtry = m)}
+  # Make the prediction
   yhat <- randomForest:::predict.randomForest(rf.portseguro, type = 'prob')
+  # Return a nice object with all of the information we need
   return(tibble(m = m, 
                 num_trees = 800, 
                 gini_coeff = normalized.gini.index(as.numeric(sample$target), 
@@ -134,62 +151,61 @@ oob_estimates <- bind_rows(lapply(X = seq(21, 40, 5), function(m){
                 rf = rf.portseguro))
 }))
 oob_estimates
-# OUTPUT:
-# A tibble: 20 x 3
-#        m num_trees gini_coeff
-#    <int>     <dbl>      <dbl>
-#  1     1       100  0.0727741
-#  2     2       100  0.1085188
-#  3     3       100  0.1671652
-#  4     4       100  0.1622811
-#  5     5       100  0.1602194
-#  6     6       100  0.1393153
-#  7     7       100  0.1500228
-#  8     8       100  0.1704952
-#  9     9       100  0.1631520
-# 10    10       100  0.1494739
-# 11    11       100  0.1778428
-# 12    12       100  0.1644787
-# 13    13       100  0.1516196
-# 14    14       100  0.1931824
-# 15    15       100  0.1767996
-# 16    16       100  0.1256602
-# 17    17       100  0.1789918
-# 18    18       100  0.1494306
-# 19    19       100  0.1725981
-# 20    20       100  0.1520909
+# We found that m=10 is one of the best-sized trees for finding the lowest OOB
+
+# Now we want to go through with m=10 and find the size tree that works well with the data. Again,
+# using OOB error estimates
 oob_estimates_ntree <- bind_rows(lapply(X = seq(100, 1000, 50), function(n){
   print(n)
-  # Use ntree=100 just to get a quick sense of what m-values are better
+  # Use m = 10 as that value worked above
   rf.portseguro <- randomForest(target ~ .-id, data = sample, mtry = 10, ntree = n, type = 'prob')
   yhat <- randomForest:::predict.randomForest(rf.portseguro, type = 'prob')
   return(tibble(m = 10, 
                 num_trees = n, 
                 gini_coeff = normalized.gini.index(as.numeric(sample$target), 
-                                                   yhat[,2])))
+                                                   yhat[,2]),
+                rf = rf.portseguro))
 }))
+oob_estimates_ntree
+# Looking at the results we see that there is diminishing returns for ntree > 800, so we can pick ntree=800 
+# and use that
 
-# Looks like with a sample size of 10K and ntrees=100, we can get the best gini_coeff with m=14
-# With further investigation and adjusting ntrees we find that n=400 gets solid behavior
+# Looks like with a sample size of 43K and ntrees=800, we can get the best gini_coeff with m=10
 
-# Looking at what we can do with parallelization
+# Looking at what we can do with parallelization. Use ntree = 800, m = 10, and the 43K sample-size
 rf.model <- foreach(ntree=rep(200, 4), .combine=combine, .packages='randomForest', .multicombine=TRUE) %dopar% {randomForest(sample[-c(1,2)],
                                                                                                  sample$target,
                                                                                                  ntree=ntree,
-                                                                                                 mtry = 10)}
+                                                                                                 mtry = 10,
+                                                                                                 importance = TRUE)}
+# Interested in what variables are the most important
+varImpPlot(rf.model)
+# So just staring at it, it looks like the most important variables are (in decreasing order):
+# ps_car_13
+# ps_reg_03
+# ps_car_06_cat
+# ps_car_14
+# etc.
+
 # remember_me <- rf.model
-#rf.model <- randomForest(target ~ .-id, data = sample, mtry = m, ntree = 100, type = 'prob')
+# predictions
 yhat <- randomForest:::predict.randomForest(rf.model, type = 'prob')
+# OOB error estimation
 gini_coeff <- normalized.gini.index(as.numeric(sample$target), 
                                    yhat[,2])
-# Now try it on a validation set
+gini_coeff
+
+# Now try it on a validation set -- not CV but gives us a gut check on how our model looks 
 set.seed(200)
-test_these <- sample(NROW(impute_train), 10000)
+# test_these <- sample(NROW(impute_train), 10000)
 # validation <- impute_train[test_these,]
-validation <- impute_train[-which(impute_train$id %in% sample$id), ]
+validation <- impute_train[-which(impute_train$id %in% sample$id), ] # pick all observations not used in the training sample
+# predictions
 yhat <- predict(rf.model, newdata = validation, type = 'prob')
+# OOB error estimation
 gini_coeff = normalized.gini.index(as.numeric(validation$target), 
                                    yhat[,2])
+gini_coeff
 
 
 
@@ -263,4 +279,4 @@ yhat <- predict(rf.model, newdata = impute_test, type = 'prob')
 # And produce the correctly formatted csv for submission
 to_submit <- tibble(id = impute_test$id,
        target = yhat[,2])
-write_csv(to_submit, 'RandomForestSubmission3-upsample.csv')
+write_csv(to_submit, 'RandomForestSubmission4-upsample-alltargets.csv')
