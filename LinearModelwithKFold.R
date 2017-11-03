@@ -102,7 +102,7 @@ model2.lm <- glm(target ~ ps_car_01_cat +
 summary(model2.lm)
 
 #Predict on subset of testing data in linear regression
-pred_test <- predict(model2.lm, test_sample, type="response") #predict based on the linear model in the testing data
+pred_test <- predict(model2.lm, test_sample, type="prob") #predict based on the linear model in the testing data
 mse1 <- sum((test_sample$target-pred_test)^2); mse1 #6263.703
 
 #boosted linear model
@@ -210,7 +210,7 @@ test_impute$ps_car_11_cat <- as.character(test_impute$ps_car_11_cat)
 #test_impute$target <- NULL
 
 #Predict on subset of testing data in linear regression
-pred_test3 <- predict(model2.lm, newdata=test_impute, type="response") #predict based on the linear model in the testing data
+pred_test3 <- predict(model2.lm, newdata=test_impute, type="prob") #predict based on the linear model in the testing data
 #pred_test3 <- ifelse(pred_test3 > 0.5,1,0); pred_test3 #if we wanted a binary classification
 
 #Transform prediction to exponential
