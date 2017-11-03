@@ -5,16 +5,16 @@ Team 4-4
 
 Sally Gao: Open track, data exploration, variable signifance, support vector machine (SVM)
 
-Adrian Mead: Random forest
+Adrian Mead: Random forest, optimization of linear model with K-fold CV
 
-Caitlin Dreisbach: Github owner, data cleaning and exploration, first pass submission, linear model
+Caitlin Dreisbach: Github owner, data cleaning and exploration, first pass submission, linear model with K-fold CV
 
 ##----------------------Approaches
 
 First pass: imputation with the mode
   Score: -0.006
 
-Linear model: general linear model with cross-validation
+Linear model: general linear model with K-fold cross-validation
   Score: 0.006
   
 Nonlinear model:Random Forest with Out-Of-Bag
