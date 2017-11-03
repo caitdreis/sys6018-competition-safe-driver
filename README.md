@@ -17,8 +17,8 @@ First pass: imputation with the mode
 Linear model: general linear model with cross-validation
   Score: 0.006
   
-Nonlinear model:
-  Score:
+Nonlinear model:Random Forest with Out-Of-Bag
+  Score: 0.255
   
 Open Track:
-  Score:
+  Score: 0.262
