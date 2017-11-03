@@ -48,7 +48,7 @@ na_count #no missing values
 #descriptive statistics
 describe(train)
 
-#--------------------- Cross Validation
+#--------------------- Tradition Cross Validation (see K-fold below)
 #Set parameters for cross validation
 set.seed(100)
 train_CV <- 0.7
@@ -105,6 +105,64 @@ summary(model2.lm)
 pred_test <- predict(model2.lm, test_sample, type="response") #predict based on the linear model in the testing data
 mse1 <- sum((test_sample$target-pred_test)^2); mse1 #6263.703
 
+#boosted linear model
+new_train$target <- as.factor(new_train$target)
+levels(new_train$target) #"0" "1"
+bstlm.model <- train(target ~ ps_car_01_cat +
+                       ps_car_02_cat+
+                       ps_car_04_cat+
+                       ps_car_07_cat+
+                       ps_car_09_cat+
+                       ps_car_11_cat+ 
+                       ps_car_13+
+                       ps_ind_04_cat+
+                       ps_ind_05_cat+
+                       ps_ind_15+
+                       ps_ind_16_bin+
+                       ps_ind_17_bin+ 
+                       ps_reg_01, new_train, method = "BstLm", #tuning mstop (# Boosting Iterations)
+                     # or nu (Shrinkage)
+                     trControl = trainControl(method = "cv", number = 10, #can iterate over best kfold number
+                                              verboseIter = TRUE))
+summary(bstlm.model)
+
+#--------------------- Linear models with K-fold cross validation set at 10
+#Generalized boosted linear model
+glmboost.model <- train(target ~ ps_car_01_cat +
+                       ps_car_02_cat+
+                       ps_car_04_cat+
+                       ps_car_07_cat+
+                       ps_car_09_cat+
+                       ps_car_11_cat+ 
+                       ps_car_13+
+                       ps_ind_04_cat+
+                       ps_ind_05_cat+
+                       ps_ind_15+
+                       ps_ind_16_bin+
+                       ps_ind_17_bin+ 
+                       ps_reg_01, new_train, method='glmboost', #could tune with mtry or #Randomly Selected Predictors
+                     trControl = trainControl(method = "cv", number = 10,
+                                              verboseIter = TRUE))
+summary(glmboost.model)
+
+#Regularized Logistic Regression
+reg.model <- train(target ~ ps_car_01_cat +
+                          ps_car_02_cat+
+                          ps_car_04_cat+
+                          ps_car_07_cat+
+                          ps_car_09_cat+
+                          ps_car_11_cat+ 
+                          ps_car_13+
+                          ps_ind_04_cat+
+                          ps_ind_05_cat+
+                          ps_ind_15+
+                          ps_ind_16_bin+
+                          ps_ind_17_bin+ 
+                          ps_reg_01, new_train, method='regLogistic', 
+                        trControl = trainControl(method = "cv", number = 10,
+                                                 verboseIter = TRUE))
+summary(reg.model)
+
 #--------------------- Cleaning and Simple Linear Regression in Testing Set
 test <- read.csv("test.csv")
 
@@ -158,17 +216,16 @@ pred_test3 <- predict(model2.lm, newdata=test_impute, type="response") #predict 
 #Transform prediction to exponential
 #preds.test3 <- sapply(pred_test3, exp) #applies exponential transformation to the prediction testing if desired
 
-#Write out predictions for pred_test3 to CSV
+#Prepare to write predictions for pred_test3 to CSV
 write.table(pred_test3, file="Kaggle.cdlm9.csv", row.names = FALSE, sep=";")
 pred_test3 <- read.csv("Kaggle.cdlm9.csv", header=TRUE, sep=";")
 View(pred_test3)
 pred_test3$target <- pred_test3$x
 pred_test3$id <- subset(test_impute, select=c("id")) #only take id column from testing data
-#pred_test3$x <- seq(0, 892815)
 pred_test3$id <- pred_test3$x
-#pred_test3$id <- as.factor(pred_test3$id)
 pred_test3$x.id <- NULL
 pred_test3 <- pred_test3[ , order(names(pred_test3))] #sort columns to fit identified order
+
 #write to file
 write.table(pred_test3, file = "Kaggle.lmsubmission.csv", 
             row.names=F, col.names=T, sep=",")
