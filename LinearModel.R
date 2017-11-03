@@ -158,17 +158,16 @@ pred_test3 <- predict(model2.lm, newdata=test_impute, type="response") #predict 
 #Transform prediction to exponential
 #preds.test3 <- sapply(pred_test3, exp) #applies exponential transformation to the prediction testing if desired
 
-#Write out predictions for pred_test3 to CSV
+#Prepare to write predictions for pred_test3 to CSV
 write.table(pred_test3, file="Kaggle.cdlm9.csv", row.names = FALSE, sep=";")
 pred_test3 <- read.csv("Kaggle.cdlm9.csv", header=TRUE, sep=";")
 View(pred_test3)
 pred_test3$target <- pred_test3$x
 pred_test3$id <- subset(test_impute, select=c("id")) #only take id column from testing data
-#pred_test3$x <- seq(0, 892815)
 pred_test3$id <- pred_test3$x
-#pred_test3$id <- as.factor(pred_test3$id)
 pred_test3$x.id <- NULL
 pred_test3 <- pred_test3[ , order(names(pred_test3))] #sort columns to fit identified order
-#write to file
+
+                  #write to file
 write.table(pred_test3, file = "Kaggle.lmsubmission.csv", 
             row.names=F, col.names=T, sep=",")
