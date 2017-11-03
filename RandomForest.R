@@ -108,10 +108,10 @@ impute_train$ps_car_11_cat <- NULL
 
 
 set.seed(100)
-sample_these <- sample(NROW(impute_train), 10000)
-# sample <- bind_rows(impute_train[impute_train$target==0,][sample(NROW(impute_train[impute_train$target==0,]), 5000),], # Half are non-claims
-#                     impute_train[impute_train$target==1,][sample(NROW(impute_train[impute_train$target==1,]), 5000),]) # And the other half are claims
-sample <- impute_train[sample_these,]
+# sample_these <- sample(NROW(impute_train), 10000)
+sample <- bind_rows(impute_train[impute_train$target==0,][sample(NROW(impute_train[impute_train$target==0,]), 10000),], # Half are non-claims
+                    impute_train[impute_train$target==1,][sample(NROW(impute_train[impute_train$target==1,]), 10000),]) # And the other half are claims
+# sample <- impute_train[sample_these,]
 # We produce a pairwise plot of the predictors to try and decide if we need to do any transformations of the variables
 # ggpairs(sample[which(lapply(sample, class) %in% c('integer', 'numeric'))])
 # For the most part it looks pretty good. There aren't any particularly skewed distributions; most variables are either normal 
@@ -119,15 +119,19 @@ sample <- impute_train[sample_these,]
 
 # I decided to use Out-Of-Bag error estimation to decide what value of m to use. Above m=15 doesn't
 # seem to produce super-strong results. It also takes longer and longer to run the model
-oob_estimates <- bind_rows(lapply(X = seq(1, 20), function(m){
+oob_estimates <- bind_rows(lapply(X = seq(21, 40, 5), function(m){
   print(m)
   # Use ntree=100 just to get a quick sense of what m-values are better
-  rf.portseguro <- randomForest(target ~ .-id, data = sample, mtry = m, ntree = 100, type = 'prob')
+  rf.portseguro <- foreach(ntree=rep(200, 4), .combine=combine, .packages='randomForest', .multicombine=TRUE) %dopar% {randomForest(sample[-c(1,2)],
+                                                                                                                                    sample$target,
+                                                                                                                                    ntree=ntree,
+                                                                                                                                    mtry = m)}
   yhat <- randomForest:::predict.randomForest(rf.portseguro, type = 'prob')
   return(tibble(m = m, 
-                num_trees = 100, 
+                num_trees = 800, 
                 gini_coeff = normalized.gini.index(as.numeric(sample$target), 
-                                                   yhat[,2])))
+                                                   yhat[,2]),
+                rf = rf.portseguro))
 }))
 oob_estimates
 # OUTPUT:
@@ -154,14 +158,25 @@ oob_estimates
 # 18    18       100  0.1494306
 # 19    19       100  0.1725981
 # 20    20       100  0.1520909
+oob_estimates_ntree <- bind_rows(lapply(X = seq(100, 1000, 50), function(n){
+  print(n)
+  # Use ntree=100 just to get a quick sense of what m-values are better
+  rf.portseguro <- randomForest(target ~ .-id, data = sample, mtry = 10, ntree = n, type = 'prob')
+  yhat <- randomForest:::predict.randomForest(rf.portseguro, type = 'prob')
+  return(tibble(m = 10, 
+                num_trees = n, 
+                gini_coeff = normalized.gini.index(as.numeric(sample$target), 
+                                                   yhat[,2])))
+}))
+
 # Looks like with a sample size of 10K and ntrees=100, we can get the best gini_coeff with m=14
 # With further investigation and adjusting ntrees we find that n=400 gets solid behavior
 
 # Looking at what we can do with parallelization
-rf.model <- foreach(ntree=rep(250, 4), .combine=combine, .packages='randomForest', .multicombine=TRUE) %dopar% {randomForest(sample[-c(1,2)],
+rf.model <- foreach(ntree=rep(200, 4), .combine=combine, .packages='randomForest', .multicombine=TRUE) %dopar% {randomForest(sample[-c(1,2)],
                                                                                                  sample$target,
                                                                                                  ntree=ntree,
-                                                                                                 mtry = 14)}
+                                                                                                 mtry = 10)}
 # remember_me <- rf.model
 #rf.model <- randomForest(target ~ .-id, data = sample, mtry = m, ntree = 100, type = 'prob')
 yhat <- randomForest:::predict.randomForest(rf.model, type = 'prob')
@@ -170,7 +185,8 @@ gini_coeff <- normalized.gini.index(as.numeric(sample$target),
 # Now try it on a validation set
 set.seed(200)
 test_these <- sample(NROW(impute_train), 10000)
-validation <- impute_train[test_these,]
+# validation <- impute_train[test_these,]
+validation <- impute_train[-which(impute_train$id %in% sample$id), ]
 yhat <- predict(rf.model, newdata = validation, type = 'prob')
 gini_coeff = normalized.gini.index(as.numeric(validation$target), 
                                    yhat[,2])
@@ -247,4 +263,4 @@ yhat <- predict(rf.model, newdata = impute_test, type = 'prob')
 # And produce the correctly formatted csv for submission
 to_submit <- tibble(id = impute_test$id,
        target = yhat[,2])
-write_csv(to_submit, 'RandomForestSubmission2.csv')
+write_csv(to_submit, 'RandomForestSubmission3-upsample.csv')
