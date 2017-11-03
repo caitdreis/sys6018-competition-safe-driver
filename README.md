@@ -11,15 +11,15 @@ Caitlin Dreisbach: Github owner, first pass submission, linear model with K-fold
 
 ##----------------------Approaches
 
-First pass: imputation with the mode
+First pass: Imputation with the mode
   Score: -0.006
 
-Linear model: general linear model with K-fold cross-validation
+Linear model: General linear model with K-fold cross-validation
   Score: 0.006
   
-Nonlinear model:Random Forest with Out-Of-Bag
+Nonlinear model: Random Forest with Out-Of-Bag
   Score: 0.255
   
-Open Track:
+Open Track: Support Vector Machine (SVM)
   Score: 0.262
   
