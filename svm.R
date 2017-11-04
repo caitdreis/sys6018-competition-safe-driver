@@ -248,13 +248,42 @@ normalized.gini.index(as.numeric(svm_test$target), predr5.df$X1)
 # we start tuning our model with a larger dataset.
 
 # 7) Now trying different cost parameters. summary(radial_untuned_svm_5) tells us that by default,
-# cost = 1. tune() takes too long because it involves 10-fold CV, so we will try cost values of
-# 0.1, 2 and 10 separately.
+# cost = 1. tune() takes too long because it involves 10-fold CV, so we will try different cost values
+# and compare the gini index score. Let's start with cost = 0.1.
 
-Sys.time()
 radial_c0.1 <- svm(target ~ ., svm_train, probability=TRUE, cost=0.1)
-Sys.time()
 
+pred.c1 <- predict(radial_c0.1, svm_test, probability=TRUE)
+pred.c1.df <- data.frame(attr(pred.c1, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), pred.c1.df$X1)
+# 0.2429899 -- not as good.
+
+# 8) How about cost = 2?
+
+radial_c2 <- svm(target ~ ., svm_train, probability=TRUE, cost=2)
+
+pred.c2 <- predict(radial_c2, svm_test, probability=TRUE)
+pred.c2.df <- data.frame(attr(pred.c2, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), pred.c2.df$X1)
+# 0.2601684 -- an improvement.
+
+# 9) How about cost = 5?
+
+radial_c5 <- svm(target ~ ., svm_train, probability=TRUE, cost=5)
+
+pred.c5 <- predict(radial_c5, svm_test, probability=TRUE)
+pred.c5.df <- data.frame(attr(pred.c5, "probabilities"))
+
+normalized.gini.index(as.numeric(svm_test$target), pred.c5.df$X1)
+# 0.2601439 -- slightly worse than before. Looks like cost = 2 is best.
+
+# BUILD FULL MODEL ========================================================================
+
+# Using cost = 2, we'll now train on the 43k observations present in svm_df.
+
+full_model <- svm(target ~ ., svm_df, probability=TRUE, cost=2)
 
 # PREDICT TEST DATA ========================================================================
 
@@ -317,14 +346,12 @@ test_df <- data.frame(
                      ps_car_11 = ordered(test$ps_car_11)
 )
 
-Sys.time()
-test_pred <- predict(radial_untuned_svm_5, test_df, probability=TRUE)
-Sys.time()
+test_pred <- predict(full_model, test_df, probability=TRUE)
 
 testpred.df <- data.frame(attr(test_pred, "probabilities"))
 
 final_preds <- cbind(test$id, testpred.df$X1)
 colnames(final_preds) <- c("id", "target")
 
-write.table(final_preds, file = "svm_untuned_02.csv", 
+write.table(final_preds, file = "svm_tuned.csv", 
             row.names=F, col.names=T, sep=",")
