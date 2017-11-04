@@ -15,7 +15,7 @@ First pass: Imputation with the mode
   Score: -0.006
 
 Linear model: General linear model with K-fold cross-validation
-  Score: 0.006
+  Score: 0.169
   
 Nonlinear model: Random Forest with Out-Of-Bag
   Score: 0.255
