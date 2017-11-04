@@ -20,9 +20,10 @@ Linear model: General linear model with K-fold cross-validation
 Nonlinear model: Random Forest with Out-Of-Bag
   Score: 0.255
   
-Open Track: Support Vector Machine (SVM)
+Open track: Support Vector Machine (SVM)
   Score: 0.266
   
+Total submissions: 28
 
 # Reflection
 
