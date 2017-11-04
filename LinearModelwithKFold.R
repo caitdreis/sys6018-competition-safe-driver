@@ -3,50 +3,72 @@
 #--------------------- Working Directory and Read in Data
 #set working directory & read in data
 setwd("~/Dropbox (Personal)/Academic/University of Virginia/Data Science Institute/Fall 2017/SYS 6018/sys6018-competition-safe-driver-master")
-train <- read.csv("train.csv", header=T)
+train <- read.csv("train.csv")
 
 #--------------------- Packages
 library(tidyr)
 library(psych)
+library(tidyverse)
+library(e1071)
+library(car)
+library(caret) #for
+install.packages("MLmetrics")
+library(MLmetrics)
 
 #--------------------- Data Cleaning & Imputation
-#Investigate if there is any data cleaning to 
-#Count the NAs across all the columns in the training data, sums the length of NA values
-na_count <-sapply(train, function(y) sum(length(which(is.na(y)))))
-na_count #shows no NAs across the columns
+train %>% 
+  sapply(function(x) sum(x==-1))
+# ps_car_03_cat has 411,231 missings and ps_car_05_cat has 266,551 missings, so we'll drop these columns.
 
-#however, upon reading through the dataset, values that are listed as -1 are actually unknown
-train[train==-1]<-NA #replace all -1 in dataset with NA
-na_count <-sapply(train, function(y) sum(length(which(is.na(y))))) #re=search for NAs
-na_count #shows multiple columns with NAs
+train <- train %>%
+  select(-ps_car_03_cat, -ps_car_05_cat)
+# We will ignore the -1s present in ordinal and categorical variables, on the assumption that keeping
+# "-1" as a factor will help our model if missingness is predictive, and it (theoretically) shouldn't
+# make much difference if it is not predictive.
 
-#imput none for categorical columns only
-train <- train[ , order(names(train))] #sort columns to identify categorical ones
-train[, 22:31][is.na(train[, 22:31])] <- "None" #columns 22-31
-train[, 33][is.na(train[, 33])] <- "None" #column 33
-train[, 39][is.na(train[, 39])] <- "None" #column 39
-train[, 41:42][is.na(train[, 41:42])] <- "None" #column 41 through 42
+# However, we need to deal with significant number of -1s in the continuous variables ps_reg_03 and ps_car_14.
+ps_reg_03_df <- train %>% 
+  select(ps_reg_03) %>%
+  filter(ps_reg_03!=-1)
 
-#recheck NAs in columns
-na_count <-sapply(train, function(y) sum(length(which(is.na(y)))))
-na_count #ps_car_11, ps_car_12, ps_car_14, ps_reg_03 still have missing values
+ps_reg_03_mean <- mean(ps_reg_03_df$ps_reg_03)
+# 0.8940473
 
-#Build function to impute median value for missing numerical variables
-impute_median <- function(df, colnm){ #assigns imputation to new variable impute_median
-  for(cols in colnm){ #for every column in all the columns
-    df[is.na(df[cols]),cols] <- median(df[,cols], na.rm = T) #if the columns include missing values take the median
-  }
-  return(df) #return the new dataset
-}
+ps_car_14_df <- train %>% 
+  select(ps_car_14) %>%
+  filter(ps_car_14!=-1)
 
-#impute missings in numerical columns with median values
-train$ps_car_11 <- as.numeric(train$ps_car_11)
-train_impute <- impute_median(train,c("ps_car_11","ps_car_12", "ps_car_14", "ps_reg_03"))
-na_count <-sapply(train_impute, function(y) sum(length(which(is.na(y)))))
-na_count #no missing values
+ps_car_14_mean <- mean(ps_car_14_df$ps_car_14)
+# 0.3746906
 
-#descriptive statistics
-describe(train)
+# Replace -1s with imputed means
+train$ps_reg_03[train$ps_reg_03==-1] <- ps_reg_03_mean
+train$ps_car_14[train$ps_car_14==-1] <- ps_car_14_mean
+
+#--------------------- Signficance Testing of Variables & Simple Linear Regression in Training Set
+sig.lm <- aov(target ~., data=train) #testing significance of variables in the training set
+summary(sig.lm) #output for only significant variables shown below
+#                 Df Sum Sq Mean Sq F value   Pr(>F)    
+#ps_ind_01           1      7   7.209 206.797  < 2e-16 ***
+#ps_ind_05_cat       1     17  17.113 490.917  < 2e-16 ***
+#ps_ind_06_bin       1     18  17.769 509.749  < 2e-16 ***
+#ps_ind_07_bin       1     11  11.375 326.329  < 2e-16 ***
+#ps_ind_08_bin       1      4   4.140 118.764  < 2e-16 ***
+#ps_ind_15           1      8   8.407 241.168  < 2e-16 ***
+#ps_ind_16_bin       1      8   8.209 235.504  < 2e-16 ***
+#ps_ind_17_bin       1     15  15.165 435.051  < 2e-16 ***
+#ps_reg_01           1     11  10.685 306.516  < 2e-16 ***
+#ps_reg_02           1      9   9.099 261.010  < 2e-16 ***
+#ps_car_02_cat       1      5   4.920 141.141  < 2e-16 ***
+#ps_car_04_cat       1      5   4.679 134.221  < 2e-16 ***
+#ps_car_07_cat       1     16  16.221 465.321  < 2e-16 ***
+#ps_car_08_cat       1      4   4.120 118.183  < 2e-16 ***
+#ps_car_12           1      3   2.666  76.493  < 2e-16 ***
+#ps_car_13           1      6   6.015 172.565  < 2e-16 ***
+#Residuals      595157  20747   0.035         
+
+anova_sig.lm <- aov(sig.lm) #creates an ANOVA table to look at significance of the testing
+anova_sig.lm #provides the sum of squares across all the columns
 
 #--------------------- Tradition Cross Validation (see K-fold below)
 #Set parameters for cross validation
@@ -54,60 +76,51 @@ set.seed(100)
 train_CV <- 0.7
 
 #create randomly generated sample for cross validation
-cv_train <- sample(1:nrow(train_impute),round(train_CV*nrow(train_impute)))
+cv_train <- sample(1:nrow(train),round(train_CV*nrow(train)))
 
 #create test and train datasets
-train_sample <- train_impute[cv_train,] #subsets data into training
-test_sample <- train_impute[-cv_train,] #subsets data into testing
+train_sample <- train[cv_train,] #subsets data into training
+test_sample <- train[-cv_train,] #subsets data into testing
 
-#--------------------- Signficance Testing of Variables & Simple Linear Regression in Training Set
-model.lm <- aov(target ~., data=train_sample) #testing significance of variables in the training set
-summary(model.lm) #output for only significant variables shown below
-#                 Df Sum Sq Mean Sq F value   Pr(>F)    
-#ps_car_01_cat      12     25   2.048  59.062  < 2e-16 ***
-#ps_car_02_cat       2     12   5.781 166.699  < 2e-16 ***
-#ps_car_03_cat       2      8   4.212 121.443  < 2e-16 ***
-#ps_car_04_cat       1      7   7.135 205.739  < 2e-16 ***
-#ps_car_07_cat       2      8   3.897 112.358  < 2e-16 ***
-#ps_car_09_cat       5      7   1.334  38.476  < 2e-16 ***
-#ps_car_11_cat     103     13   0.129   3.710  < 2e-16 ***
-#ps_car_13           1      4   4.177 120.431  < 2e-16 ***
-#ps_ind_04_cat       2      4   1.786  51.490  < 2e-16 ***
-#ps_ind_05_cat       7     24   3.438  99.129  < 2e-16 ***
-#ps_ind_06_bin       1      2   2.389  68.877  < 2e-16 ***
-#ps_ind_15           1      6   6.433 185.492  < 2e-16 ***
-#ps_ind_16_bin       1      5   5.052 145.654  < 2e-16 ***
-#ps_ind_17_bin       1      6   6.479 186.801  < 2e-16 ***
-#ps_reg_01           1      3   3.031  87.406  < 2e-16 ***
-#Residuals      416460  14444   0.035
+#build a linear model with all the variables of significance
+line.lm <- lm(target ~ ps_car_01_cat +
+                ps_car_02_cat+
+                ps_car_04_cat+
+                ps_car_07_cat+
+                ps_car_09_cat+
+                ps_car_13+
+                ps_ind_04_cat+
+                ps_ind_05_cat+
+                ps_ind_15+
+                ps_ind_16_bin+
+                ps_ind_17_bin+ 
+                ps_reg_01, train_sample) 
+#Residual standard error: 0.1865 on 416635 degrees of freedom
+#Multiple R-squared:  0.006774,	Adjusted R-squared:  0.006745 
+#F-statistic: 236.8 on 12 and 416635 DF,  p-value: < 2.2e-16
 
-anova_model.lm <- aov(model.lm) #creates an ANOVA table to look at significance of the testing
-anova_model.lm #provides the sum of squares across all the columns
-
-#build a linear model with all the variables with a p value <2e-16
-model2.lm <- glm(target ~ ps_car_01_cat +
-                  ps_car_02_cat+
-                  ps_car_03_cat+
-                  ps_car_04_cat+
-                  ps_car_07_cat+
-                  ps_car_09_cat+
-                  ps_car_11_cat+ 
-                  ps_car_13+
-                  ps_ind_04_cat+
-                  ps_ind_05_cat+
-                  ps_ind_15+
-                  ps_ind_16_bin+
-                  ps_ind_17_bin+ 
-                  ps_reg_01, family=quasipoisson(link = "log"), train_sample) 
-summary(model2.lm)
+summary(line.lm)
+#Estimate Std. Error t value Pr(>|t|)    
+#(Intercept)    1.318e-02  2.433e-03   5.415 6.13e-08 ***
+#ps_car_01_cat  2.472e-04  1.246e-04   1.984  0.04723 *  
+#ps_car_02_cat -2.562e-03  8.847e-04  -2.895  0.00379 ** 
+#ps_car_04_cat -3.410e-05  1.675e-04  -0.204  0.83865    
+#ps_car_07_cat -1.364e-02  8.623e-04 -15.812  < 2e-16 ***
+#ps_car_09_cat  6.012e-04  3.111e-04   1.932  0.05331 .  
+#ps_car_13      3.819e-02  1.798e-03  21.238  < 2e-16 ***
+#ps_ind_04_cat  5.511e-03  5.904e-04   9.335  < 2e-16 ***
+#ps_ind_05_cat  4.507e-03  2.146e-04  21.001  < 2e-16 ***
+#ps_ind_15     -9.013e-04  8.764e-05 -10.284  < 2e-16 ***
+#ps_ind_16_bin -2.220e-03  7.637e-04  -2.907  0.00365 ** 
+#ps_ind_17_bin  1.647e-02  1.060e-03  15.541  < 2e-16 ***
+#ps_reg_01      9.405e-03  1.030e-03   9.131  < 2e-16 ***
 
 #Predict on subset of testing data in linear regression
-pred_test <- predict(model2.lm, test_sample, type="prob") #predict based on the linear model in the testing data
-mse1 <- sum((test_sample$target-pred_test)^2); mse1 #6263.703
+pred_test <- predict(line.lm, test_sample) #predict based on the linear model in the testing data
+mse1 <- sum((test_sample$target-pred_test)^2); mse1 #6275.981
 
+#--------------------- Linear models with K-fold cross validation set at 10
 #boosted linear model
-new_train$target <- as.factor(new_train$target)
-levels(new_train$target) #"0" "1"
 bstlm.model <- train(target ~ ps_car_01_cat +
                        ps_car_02_cat+
                        ps_car_04_cat+
@@ -120,33 +133,18 @@ bstlm.model <- train(target ~ ps_car_01_cat +
                        ps_ind_15+
                        ps_ind_16_bin+
                        ps_ind_17_bin+ 
-                       ps_reg_01, new_train, method = "BstLm", #tuning mstop (# Boosting Iterations)
+                       ps_reg_01, train, method = "BstLm", #tuning mstop (# Boosting Iterations)
                      # or nu (Shrinkage)
                      trControl = trainControl(method = "cv", number = 10, #can iterate over best kfold number
                                               verboseIter = TRUE))
 summary(bstlm.model)
 
-#--------------------- Linear models with K-fold cross validation set at 10
-#Generalized boosted linear model
-glmboost.model <- train(target ~ ps_car_01_cat +
-                       ps_car_02_cat+
-                       ps_car_04_cat+
-                       ps_car_07_cat+
-                       ps_car_09_cat+
-                       ps_car_11_cat+ 
-                       ps_car_13+
-                       ps_ind_04_cat+
-                       ps_ind_05_cat+
-                       ps_ind_15+
-                       ps_ind_16_bin+
-                       ps_ind_17_bin+ 
-                       ps_reg_01, new_train, method='glmboost', #could tune with mtry or #Randomly Selected Predictors
-                     trControl = trainControl(method = "cv", number = 10,
-                                              verboseIter = TRUE))
-summary(glmboost.model)
+pred_test1 <- predict(bstlm.model, train) #predict based on the linear model in the testing data
+mse2 <- sum((train$target-pred_test1)^2); mse2 #20806.14
 
-#Regularized Logistic Regression
-reg.model <- train(target ~ ps_car_01_cat +
+#Generalized boosted linear model
+train$target <- factor(train$target) #need to make target a factor with 2 levels
+glmboost.model <- train(target ~ ps_car_01_cat +
                           ps_car_02_cat+
                           ps_car_04_cat+
                           ps_car_07_cat+
@@ -158,74 +156,135 @@ reg.model <- train(target ~ ps_car_01_cat +
                           ps_ind_15+
                           ps_ind_16_bin+
                           ps_ind_17_bin+ 
-                          ps_reg_01, new_train, method='regLogistic', 
+                          ps_reg_01, train, method='glmboost', #could tune with mtry or #Randomly Selected Predictors
                         trControl = trainControl(method = "cv", number = 10,
                                                  verboseIter = TRUE))
+summary(glmboost.model)
+
+pred_test3 <- predict(glmboost.model, train) #predict based on the linear model in the testing data
+
+#Regularized Logistic Regression, takes significant time
+reg.model <- train(target ~ ps_car_01_cat +
+                     ps_car_02_cat+
+                     ps_car_04_cat+
+                     ps_car_07_cat+
+                     ps_car_09_cat+
+                     ps_car_11_cat+ 
+                     ps_car_13+
+                     ps_ind_04_cat+
+                     ps_ind_05_cat+
+                     ps_ind_15+
+                     ps_ind_16_bin+
+                     ps_ind_17_bin+ 
+                     ps_reg_01, train, method='regLogistic', 
+                   trControl = trainControl(method = "cv", number = 10,
+                                            verboseIter = TRUE))
 summary(reg.model)
 
-#--------------------- Cleaning and Simple Linear Regression in Testing Set
-test <- read.csv("test.csv")
+pred_test4 <- predict(reg.model, train) #predict based on the linear model in the testing data
+mse4 <- sum((train$target-pred_test1)^2); mse4
 
-#Investigate if there is any data cleaning to 
-#Count the NAs across all the columns in the training data, sums the length of NA values
-na_count <-sapply(test, function(y) sum(length(which(is.na(y)))))
-na_count #shows no NAs across the columns
-
-#however, upon reading through the dataset, values that are listed as -1 are actually unknown
-test[test==-1]<-NA #replace all -1 in dataset with NA
-na_count <-sapply(test, function(y) sum(length(which(is.na(y))))) #re=search for NAs
-na_count #shows multiple columns with NAs
-
-#imput none for categorical columns only
-#test <- test[ , order(names(test))] #sort columns to identify categorical ones
-test[, 3][is.na(test[, 3])] <- "None" #columns 3 ps_ind_02_cat
-test[, 5:6][is.na(test[, 5:6])] <- "None" #column 5 and 6 ps_ind_04_cat  ps_ind_05_cat
-test[, 23:25][is.na(test[, 23:25])] <- "None" #column 23 through 25 ps_car_01_cat, ps_car_02_cat, ps_car_03_cat
-test[, 27][is.na(test[, 27])] <- "None" #column 27 ps_car_05_cat
-test[, 29][is.na(test[, 29])] <- "None" #column 28 ps_car_07_cat
-test[, 31][is.na(test[, 31])] <- "None" #column 31 ps_car_09_cat
-
-#recheck NAs in columns
-#na_count <-sapply(test, function(y) sum(length(which(is.na(y)))))
-#na_count 
-#ps_reg_03 #58, ps_car_14 #36 still have missing values
-
-#Build function to impute median value for missing numerical variables
-impute_median <- function(df, colnm){ #assigns imputation to new variable impute_median
-  for(cols in colnm){ #for every column in all the columns
-    df[is.na(df[cols]),cols] <- median(df[,cols], na.rm = T) #if the columns include missing values take the median
-  }
-  return(df) #return the new dataset
+#--------------------- Alternative Coding Structure for Linear models with K-fold cross validation set at 10
+#Reference Dr. Gerber: Calculates unnormalized Gini index from ground truth and predicted probabilities.
+unnormalized.gini.index = function(ground.truth, predicted.probabilities) {
+  if (length(ground.truth) !=  length(predicted.probabilities))
+  {
+    stop("Actual and Predicted need to be equal lengths!")}
+  
+  # arrange data into table with columns of index, predicted values, and actual values
+  gini.table = data.frame(index = c(1:length(ground.truth)), predicted.probabilities, ground.truth)
+  
+  # sort rows in decreasing order of the predicted values, breaking ties according to the index
+  gini.table = gini.table[order(-gini.table$predicted.probabilities, gini.table$index), ]
+  
+  # get the per-row increment for positives accumulated by the model 
+  num.ground.truth.positivies = sum(gini.table$ground.truth)
+  model.percentage.positives.accumulated = gini.table$ground.truth / num.ground.truth.positivies
+  
+  # get the per-row increment for positives accumulated by a random guess
+  random.guess.percentage.positives.accumulated = 1 / nrow(gini.table)
+  
+  # calculate gini index
+  gini.sum = cumsum(model.percentage.positives.accumulated - random.guess.percentage.positives.accumulated)
+  gini.index = sum(gini.sum) / nrow(gini.table) 
+  return(gini.index)
 }
 
-#impute missings in numerical columns with median values
-test_impute <- impute_median(test,c("ps_reg_03", "ps_car_14"))
+#Calculates normalized Gini index from ground truth and predicted probabilities.
+normalized.gini.index = function(ground.truth, predicted.probabilities) {
+  
+  model.gini.index = unnormalized.gini.index(ground.truth, predicted.probabilities)
+  optimal.gini.index = unnormalized.gini.index(ground.truth, ground.truth)
+  return(model.gini.index / optimal.gini.index)
+}
 
-#recheck NAs in columns
-#na_count2 <-sapply(test_impute, function(y) sum(length(which(is.na(y)))))
-#na_count2 
+train$target <- factor(train$target)
 
-#reformat columns
-test_impute$ps_car_11_cat <- as.character(test_impute$ps_car_11_cat)
-#test_impute$target <- NULL
+K <- 10 #can iterate over number of K folds
+rand_nums <- sample(NROW(train), NROW(train))
+splits <- cut(1:NROW(train), K)
+output <- lapply(1:K, function(X){
+  d <- rand_nums[which(levels(splits)[X] == splits)]
+  glm.fit <- glm(target ~ ps_car_13 + ps_reg_03 + ps_car_06_cat + ps_car_14,
+                 family = 'binomial',
+                 data = train[d,])
+  yhat <- predict.glm(glm.fit, newdata = train[-d,], type = 'response')
+  gini_coeff = normalized.gini.index(as.numeric(train[-d,]$target), 
+                                     yhat)
+})
+output #Gini indexes for each of the 10 folds
+#[1] 0.1693486
+#[2] 0.1685148
+#[3] 0.1692306
+#[4] 0.1656972
+#[5] 0.1640496
+#[6] 0.1648028
+#[7] 0.168505
+#[8] 0.1670531
+#[9] 0.1694688
+#[10] 0.1712042
 
-#Predict on subset of testing data in linear regression
-pred_test3 <- predict(model2.lm, newdata=test_impute, type="prob") #predict based on the linear model in the testing data
-#pred_test3 <- ifelse(pred_test3 > 0.5,1,0); pred_test3 #if we wanted a binary classification
+#--------------------- Preparing Testing Data
+test <- read_csv("test.csv")
 
-#Transform prediction to exponential
-#preds.test3 <- sapply(pred_test3, exp) #applies exponential transformation to the prediction testing if desired
+# Impute mean for missing values in ps_reg_03 and ps_car_14. 
+psreg03_all <- data.frame(c(train$ps_reg_03, test$ps_reg_03))
+names(psreg03_all) <- "var"
+psreg03_all <- psreg03_all %>% 
+  filter(var!=-1)
 
-#Prepare to write predictions for pred_test3 to CSV
-write.table(pred_test3, file="Kaggle.cdlm9.csv", row.names = FALSE, sep=";")
-pred_test3 <- read.csv("Kaggle.cdlm9.csv", header=TRUE, sep=";")
-View(pred_test3)
-pred_test3$target <- pred_test3$x
-pred_test3$id <- subset(test_impute, select=c("id")) #only take id column from testing data
-pred_test3$id <- pred_test3$x
-pred_test3$x.id <- NULL
-pred_test3 <- pred_test3[ , order(names(pred_test3))] #sort columns to fit identified order
+psreg03_mean <- mean(psreg03_all$var)
 
-#write to file
-write.table(pred_test3, file = "Kaggle.lmsubmission.csv", 
+ps_car_14_all <- data.frame(c(train$ps_car_14, test$ps_car_14))
+names(ps_car_14_all) <- "var"
+ps_car_14_all <- ps_car_14_all %>% 
+  filter(var!=-1)
+
+pscar14_mean <- mean(ps_car_14_all$var)
+
+# Replace -1s with imputed means
+test$ps_reg_03[test$ps_reg_03==-1] <- psreg03_mean
+test$ps_car_14[test$ps_car_14==-1] <- pscar14_mean
+
+table(test$ps_car_02_cat) # mode is 1
+table(test$ps_car_11) # mode is 3
+
+test$ps_car_02_cat[test$ps_car_02_cat==-1] <- 1
+test$ps_car_11[test$ps_car_11==-1] <-3
+
+#--------------------- Optimal Model Testing in Test Set
+#predictions using the best model
+preds2 <- predict.glm(glm.fit, test, type = "response"); preds2
+
+#Prepare to write predictions for preds2 to CSV
+write.table(preds2, file="Kaggle.csv", row.names = FALSE, sep=";")
+preds2 <- read.csv("Kaggle.csv", header=TRUE, sep=";")
+preds2$target <- preds2$x
+preds2$id <- subset(test, select=c("id")) #only take id column from testing data
+preds2$id <- preds2$x
+preds2$x <- NULL
+preds2 <- preds2[ , order(names(preds2))] #sort columns to fit identified order
+
+#write to csv for submission
+write.table(preds2, file = "Linear_preds_cd2.csv", 
             row.names=F, col.names=T, sep=",")
